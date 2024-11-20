@@ -4,6 +4,8 @@ This plugin helps you manage your clan at a glimpse by tracking your clan member
 
 It can also be used with a custom webhook URL so you can own and manage your data.
 
+[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/nordveil)
+
 ## Features
 
 ### Automated tracking
