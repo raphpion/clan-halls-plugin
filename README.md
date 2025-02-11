@@ -1,10 +1,13 @@
 # Clan Halls
 
+[![Discord](https://img.shields.io/badge/Discord-%235865F2.svg?style=for-the-badge&logo=discord&logoColor=white)](https://discord.gg/eU938j3UNv)
+[![Ko-Fi](https://img.shields.io/badge/Ko--fi-F16061?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/nordveil)
+
 This plugin helps you manage your clan at a glimpse by tracking your clan members by their activity. It integrates with the [Clan Halls web app](https://app.clanhalls.net) so you can easily consult your clan's activity.
 
 It can also be used with a custom webhook URL so you can own and manage your data.
 
-[![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/nordveil)
+
 
 ## Features
 
