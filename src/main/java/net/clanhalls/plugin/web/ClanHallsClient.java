@@ -1,17 +1,20 @@
 package net.clanhalls.plugin.web;
 
 import net.clanhalls.plugin.ClanHallsConfig;
-import net.clanhalls.plugin.beans.MemberActivityReport;
-import net.clanhalls.plugin.beans.MembersListReport;
-import net.clanhalls.plugin.beans.SettingsReport;
+import net.clanhalls.plugin.beans.*;
 import net.clanhalls.plugin.ClanHallsChatMessenger;
 import com.google.gson.Gson;
 import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import okhttp3.*;
+import okio.BufferedSink;
 
+import javax.annotation.Nullable;
 import javax.inject.Inject;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.text.DateFormat;
+import java.util.Base64;
 import java.util.function.Consumer;
 
 @Slf4j
@@ -22,13 +25,7 @@ public class ClanHallsClient {
     private Gson gson;
 
     @Inject
-    private Client client;
-
-    @Inject
     private ClanHallsConfig config;
-
-    @Inject
-    private ClanHallsChatMessenger messenger;
 
     @Inject
     public ClanHallsClient(Gson gson)
@@ -38,76 +35,66 @@ public class ClanHallsClient {
                 .create();
     }
 
-    public void sendSettingsReport(SettingsReport settingsReport) {
+    public APIResponse<ClanInfo> getClan() {
+        Request request = createRequest(HttpMethod.GET, "webhooks", "clans");
+        return sendRequest(request, ClanInfo.class);
+    }
+
+    public APIResponse<ReportInfo> sendSettingsReport(SettingsReport settingsReport) {
         Request request = createRequest(settingsReport, HttpMethod.POST, "webhooks", "clans", "settings-report");
-        sendRequest(request, this::sendSettingsReportCallback);
+        return sendRequest(request, ReportInfo.class);
     }
 
-    public void sendMembersListReport(MembersListReport membersListReport) {
+    public APIResponse<ReportInfo> sendMembersListReport(MembersListReport membersListReport) {
         Request request = createRequest(membersListReport, HttpMethod.POST, "webhooks", "clans", "members-list-report");
-        sendRequest(request, this::sendMembersListReportCallback);
+        return sendRequest(request, ReportInfo.class);
     }
 
-    public void sendMemberActivityReport(MemberActivityReport memberActivityReport) {
+    public APIResponse<ReportInfo> sendMemberActivityReport(MemberActivityReport memberActivityReport) {
         Request request = createRequest(memberActivityReport, HttpMethod.POST, "webhooks", "clans", "member-activity-report");
-        sendRequest(request, this::sendMemberActivityReportCallback);
+        return sendRequest(request, ReportInfo.class);
     }
 
-    private void sendSettingsReportCallback(Response response) {
-        if (!response.isSuccessful()) {
-            if (genericErrorsCallback(response)) return;
-
-            messenger.send("Unexpected error while sending settings report.", ClanHallsChatMessenger.ERROR);
-            return;
+    private <T> APIResponse<T> sendRequest(Request request, Class<T> responseType) {
+        log.info(request.url().toString());
+        if (request.body() != null) {
+            log.info(request.body().toString());
         }
 
-        messenger.send("Settings report sent successfully!", ClanHallsChatMessenger.SUCCESS);
-    }
+        try (Response response = okHttpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                return APIResponse.failure(response.code(), "HTTP Error: " + response.code());
+            }
 
-    private void sendMembersListReportCallback(Response response) {
-        if (!response.isSuccessful()) {
-            if (genericErrorsCallback(response)) return;
+            if (response.body() == null || response.body().contentLength() == 0) {
+                return APIResponse.success(null);
+            }
 
-            messenger.send("Unexpected error while sending members list report.", ClanHallsChatMessenger.ERROR);
-            return;
+            String responseBody = response.body().string();
+            T data = gson.fromJson(responseBody, responseType);
+            return APIResponse.success(data);
+        } catch (IOException e) {
+            return APIResponse.failure(500, "Network error: " + e.getMessage());
         }
-
-        messenger.send("Members list report sent successfully!", ClanHallsChatMessenger.SUCCESS);
     }
 
-    private void sendMemberActivityReportCallback(Response response) {
-        if (!response.isSuccessful()) {
-            if (genericErrorsCallback(response)) return;
+    private Request createRequest(HttpMethod method, String... pathSegments) {
+        HttpUrl url = buildUrl(pathSegments);
 
-            messenger.send("Unexpected error while sending member activity report.", ClanHallsChatMessenger.ERROR);
-            return;
-        }
+        Request.Builder requestBuilder = new Request.Builder()
+                .header("User-Agent", "ClanHalls RuneLite Plugin")
+                .header("Content-Type", "application/json")
+                .header("Authorization", getBasicAuthHeader())
+                .url(url);
 
-        messenger.send("Member activity report sent successfully!", ClanHallsChatMessenger.SUCCESS);
-    }
-
-    private boolean genericErrorsCallback(Response response) {
-        switch (response.code()) {
-            case 401:
-                messenger.send("Invalid credentials. Please verify your configuration.", ClanHallsChatMessenger.ERROR);
-                return true;
-
-            case 500:
-                messenger.send("A server error has occured. Please try again later.", ClanHallsChatMessenger.ERROR);
-                return true;
-
+        switch (method) {
+            case GET:
+                return requestBuilder.get().build();
+            case DELETE:
+                return requestBuilder.delete().build();
             default:
-                return false;
+                throw new IllegalArgumentException("Invalid http method specified!");
         }
-    }
-
-    private void sendRequest(Request request, Consumer<Response> consumer) {
-        sendRequest(request, new ClanHallsCallback(consumer));
-    }
-
-    void sendRequest(Request request, Callback callback)
-    {
-        okHttpClient.newCall(request).enqueue(callback);
     }
 
     private Request createRequest(Object payload, HttpMethod method, String... pathSegments) {
@@ -121,11 +108,18 @@ public class ClanHallsClient {
         Request.Builder requestBuilder = new Request.Builder()
                 .header("User-Agent", "ClanHalls RuneLite Plugin")
                 .header("Content-Type", "application/json")
+                .header("Authorization", getBasicAuthHeader())
                 .url(url);
 
         switch (method) {
             case POST:
                 return requestBuilder.post(body).build();
+            case PUT:
+                return requestBuilder.put(body).build();
+            case PATCH:
+                return requestBuilder.patch(body).build();
+            case DELETE:
+                return requestBuilder.delete(body).build();
             default:
                 throw new IllegalArgumentException("Invalid http method specified!");
         }
@@ -165,5 +159,10 @@ public class ClanHallsClient {
         }
 
         return urlBuilder.build();
+    }
+
+    private String getBasicAuthHeader() {
+        String credentials = config.clientId() + ":" + config.clientSecret();
+        return "Basic " + Base64.getEncoder().encodeToString(credentials.getBytes(StandardCharsets.UTF_8));
     }
 }

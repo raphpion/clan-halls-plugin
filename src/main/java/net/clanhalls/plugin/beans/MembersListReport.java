@@ -6,7 +6,5 @@ import java.util.List;
 
 @Value
 public class MembersListReport {
-    String clientId;
-    String clientSecret;
     List<ListMember> members;
 }

@@ -2,9 +2,10 @@ package net.clanhalls.plugin.beans;
 
 import lombok.Value;
 
+import java.util.List;
+
 @Value
 public class SettingsReport {
-    String clientId;
-    String clientSecret;
-    Settings settings;
+    String name;
+    List<RankTitle> ranks;
 }

@@ -1,6 +1,7 @@
 package net.clanhalls.plugin;
 
 import net.clanhalls.plugin.beans.*;
+import net.clanhalls.plugin.web.APIResponse;
 import net.clanhalls.plugin.web.ClanHallsClient;
 import com.google.inject.Provides;
 import javax.inject.Inject;
@@ -83,9 +84,21 @@ public class ClanHallsPlugin extends net.runelite.client.plugins.Plugin
 	@Subscribe
 	public void onClanChannelChanged(ClanChannelChanged event) throws IOException
 	{
-		if (event.getClanChannel() == null || event.getClanId() != 0 || !config.sendActivityOnJoined()) return;
+		if (event.getClanChannel() == null || event.getClanId() != 0) return;
 
-		sendMemberActivityReport(null);
+		APIResponse<ClanInfo> clanResponse = clanHallsClient.getClan();
+		if (clanResponse.getError() != null) {
+			messenger.send("Unable to retrieve clan information.", ClanHallsChatMessenger.ERROR);
+		} else {
+			ClanInfo clanInfo = clanResponse.getData();
+			if (clanInfo != null && clanInfo.getLastSyncedAt() == null) {
+				sendSettingsReport(null);
+			}
+		}
+
+		if (config.sendActivityOnJoined()) {
+			sendMemberActivityReport(null);
+		}
 	}
 
 	@Provides
@@ -116,9 +129,15 @@ public class ClanHallsPlugin extends net.runelite.client.plugins.Plugin
 			rankTitles.add(rankTitle);
 		}
 
-		Settings settings = new Settings(clanSettings.getName(), rankTitles);
-		SettingsReport report = new SettingsReport(config.clientId(), config.clientSecret(), settings);
-		clanHallsClient.sendSettingsReport(report);
+		SettingsReport report = new SettingsReport(clanSettings.getName(), rankTitles);
+
+		APIResponse<ReportInfo> response = clanHallsClient.sendSettingsReport(report);
+		if (response.getError() != null) {
+			messenger.send("Unexpected error while sending settings report.", ClanHallsChatMessenger.ERROR);
+			return;
+		}
+
+		messenger.send("Settings report sent successfully!", ClanHallsChatMessenger.SUCCESS);
 	}
 
 	public void sendMembersListReport(MenuEntry entry) {
@@ -135,8 +154,14 @@ public class ClanHallsPlugin extends net.runelite.client.plugins.Plugin
 			members.add(new ListMember(member.getName(), member.getRank().getRank()));
 		}
 
-		MembersListReport membersListReport = new MembersListReport(config.clientId(), config.clientSecret(), members);
-		clanHallsClient.sendMembersListReport(membersListReport);
+		MembersListReport membersListReport = new MembersListReport(members);
+		APIResponse<ReportInfo> response = clanHallsClient.sendMembersListReport(membersListReport);
+		if (response.getError() != null) {
+			messenger.send("Unexpected error while sending members list report.", ClanHallsChatMessenger.ERROR);
+			return;
+		}
+
+		messenger.send("Members list report sent successfully!", ClanHallsChatMessenger.SUCCESS);
 	}
 
 	public void sendMemberActivityReport(MenuEntry entry) {
@@ -153,8 +178,15 @@ public class ClanHallsPlugin extends net.runelite.client.plugins.Plugin
 			members.add(new MemberActivity(member.getName(), member.getRank().getRank()));
 		}
 
-		MemberActivityReport memberActivityReport = new MemberActivityReport(config.clientId(), config.clientSecret(), members);
-		clanHallsClient.sendMemberActivityReport(memberActivityReport);
+		MemberActivityReport memberActivityReport = new MemberActivityReport(members);
+
+		APIResponse<ReportInfo> response = clanHallsClient.sendMemberActivityReport(memberActivityReport);
+		if (response.getError() != null) {
+			messenger.send("Unexpected error while sending member activity report.", ClanHallsChatMessenger.ERROR);
+			return;
+		}
+
+		messenger.send("Member activity report sent successfully!", ClanHallsChatMessenger.SUCCESS);
 	}
 
 	private boolean validateWebhookConfig()
